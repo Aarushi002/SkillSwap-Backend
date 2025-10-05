@@ -11,6 +11,9 @@ const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
 
+// Import database configuration
+const DatabaseConnection = require('./config/database');
+
 const app = express();
 const server = createServer(app);
 
@@ -43,7 +46,11 @@ app.use('/api/', limiter);
 // CORS configuration
 app.use(cors({
   origin: process.env.CLIENT_URL || "http://localhost:3000",
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Content-Range', 'X-Content-Range'],
+  maxAge: 86400 // Cache preflight request for 24 hours
 }));
 
 // Body parsing middleware
@@ -101,12 +108,15 @@ app.options('/uploads/avatars/:filename', (req, res) => {
 });
 
 // Database connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/skillswap-hub', {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
-.then(() => console.log('MongoDB connected successfully'))
-.catch(err => console.error('MongoDB connection error:', err));
+async function initializeDatabase() {
+  try {
+    await DatabaseConnection.connect();
+    DatabaseConnection.setupEventHandlers();
+  } catch (error) {
+    console.error('Failed to initialize database:', error);
+    process.exit(1);
+  }
+}
 
 // Socket.io connection handling
 const socketHandler = require('./socket/socketHandler');
@@ -125,7 +135,13 @@ app.use('/api/stats', require('./routes/stats'));
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+  const dbStatus = DatabaseConnection.getConnectionStatus();
+  res.json({ 
+    status: 'OK', 
+    timestamp: new Date().toISOString(),
+    database: dbStatus,
+    environment: process.env.NODE_ENV || 'development'
+  });
 });
 
 // Error handling middleware
@@ -146,11 +162,30 @@ const PORT = process.env.PORT || 5000; // Updated CORS for images
 
 // Start session scheduler
 const sessionScheduler = require('./services/sessionScheduler');
-sessionScheduler.start();
 
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log('Session scheduler initialized');
-});
+// Initialize application
+async function startServer() {
+  try {
+    // Initialize database connection
+    await initializeDatabase();
+    
+    // Start session scheduler
+    sessionScheduler.start();
+    
+    // Start server
+    server.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+      console.log('📅 Session scheduler initialized');
+      console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`🔗 Client URL: ${process.env.CLIENT_URL || 'http://localhost:3000'}`);
+    });
+  } catch (error) {
+    console.error('❌ Failed to start server:', error);
+    process.exit(1);
+  }
+}
+
+// Start the application
+startServer();
 
 module.exports = { app, io };

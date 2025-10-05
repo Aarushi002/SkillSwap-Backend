@@ -8,7 +8,11 @@
     "dev": "nodemon server.js",
     "test": "jest",
     "script": "node scripts/seedDatabase.js",
-    "seed:clear": "node scripts/clearDatabase.js"
+    "seed:clear": "node scripts/clearDatabase.js",
+    "db:stats": "node scripts/dbManager.js stats",
+    "db:health": "node scripts/dbManager.js health",
+    "db:indexes": "node scripts/dbManager.js indexes",
+    "db:clear": "node scripts/dbManager.js clear"
   },
   "keywords": [
     "barter",
