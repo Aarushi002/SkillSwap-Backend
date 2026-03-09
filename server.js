@@ -23,6 +23,7 @@ const server = createServer(app);
 const allowedOrigins = [
   'http://localhost:3000',
   'https://skill-swap-frontend-gray.vercel.app',
+  'https://skill-swap-frontend-wnl30rtja-aarushi-krishnas-projects.vercel.app',
 ];
 
 // Socket.io setup
