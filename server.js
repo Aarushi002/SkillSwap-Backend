@@ -19,11 +19,18 @@ const isProduction = process.env.NODE_ENV === 'production';
 // Create HTTP server only for local development
 const server = createServer(app);
 
+// Allowed frontend origins
+const allowedOrigins = [
+  'http://localhost:3000',
+  'https://skill-swap-frontend-gray.vercel.app',
+];
+
 // Socket.io setup
 const io = new Server(server, {
   cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:3000',
+    origin: allowedOrigins,
     methods: ['GET', 'POST'],
+    credentials: true,
   },
 });
 
@@ -35,6 +42,22 @@ app.use(helmet());
 app.use(compression());
 app.use(morgan('combined'));
 
+// CORS configuration
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Allow requests with no origin too, like Postman or server-to-server
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error(`CORS not allowed for origin: ${origin}`));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
+
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -42,25 +65,14 @@ const limiter = rateLimit({
   message: 'Too many requests from this IP, please try again later.',
   skipSuccessfulRequests: false,
   skip: (req) => {
-    return req.path === '/api/health' || req.path.startsWith('/uploads/');
+    if (req.method === 'OPTIONS') return true;
+    if (req.path === '/api/health') return true;
+    if (req.path.startsWith('/uploads/')) return true;
+    return false;
   },
 });
 
 app.use('/api/', limiter);
-
-// CORS configuration
-const corsOptions = {
-  origin: [
-    "http://localhost:3000",
-    "https://skill-swap-frontend-gray.vercel.app"
-  ],
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"]
-};
-
-app.use(cors(corsOptions));
-app.options('*', cors(corsOptions));
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
@@ -148,6 +160,14 @@ async function initializeApp() {
   return initPromise;
 }
 
+// Optional root route
+app.get('/', (req, res) => {
+  res.json({
+    message: 'SkillSwap API is running',
+    status: 'OK',
+  });
+});
+
 // Ensure app is initialized before routes run
 app.use(async (req, res, next) => {
   try {
@@ -198,6 +218,13 @@ app.get('/api/health', async (req, res) => {
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);
+
+  if (err.message && err.message.startsWith('CORS not allowed')) {
+    return res.status(403).json({
+      message: err.message,
+    });
+  }
+
   res.status(500).json({
     message: 'Something went wrong!',
     error: isProduction ? 'Internal server error' : err.message,
@@ -218,7 +245,7 @@ if (!isProduction) {
       server.listen(PORT, () => {
         console.log(`Server running on port ${PORT}`);
         console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-        console.log(`Client URL: ${process.env.CLIENT_URL || 'http://localhost:3000'}`);
+        console.log(`Allowed origins: ${allowedOrigins.join(', ')}`);
       });
     })
     .catch((error) => {
